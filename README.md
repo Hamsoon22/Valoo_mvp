@@ -77,4 +77,4 @@ ai-advice-app/
 
 ---
 
-**문의**: kimyeun@example.com (예시)
+**문의**: yeunkim1230@gmail.com
