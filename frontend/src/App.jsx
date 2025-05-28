@@ -1,80 +1,199 @@
 import React, { useState } from "react";
+import ResultPage from "./ResultPage";
+import Advice from "./Advice";
+import ReminderImage from "./ReminderImage";
 
-function App() {
-  const [concern, setConcern] = useState("");
-  const [suggestions, setSuggestions] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasFetched, setHasFetched] = useState(false);
+const questions = [
+  "가족 (부부관계나 자녀양육 제외)",
+  "부부관계/친밀한 관계",
+  "부모됨/양육하기",
+  "친구관계",
+  "일",
+  "자기 자신에 대한 교육/훈련",
+  "휴식/즐거운 활동",
+  "영성/초월성",
+  "사회참여/시민의식",
+  "자신을 신체적으로 돌보기 (운동, 수면, 식이 등)",
+  "환경문제",
+  "예술, 창조성 등"
+];
 
-  const handleSubmit = async (e) => {
-    e.preventDefault(); // 새로고침 방지
-    setIsLoading(true);
+function Container({ children }) {
+  return (
+    <div style={{ maxWidth: '800px', margin: '2rem auto', padding: '2rem', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 0 20px rgba(0,0,0,0.05)' }}>
+      {children}
+    </div>
+  );
+}
 
-    try {
-      const response = await fetch("http://localhost:3001/api/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concern }),
-      });
+function QuestionSection({ title, responses, setResponses, onNext, disabledIndices = [] }) {
+  const handleChange = (index, value) => {
+    const updated = [...responses];
+    updated[index] = parseInt(value);
+    setResponses(updated);
+  };
 
-      if (!response.ok) {
-        const error = await response.json();
-        alert(`오류: ${error.error}`);
-        setIsLoading(false);
-        return;
-      }
-
-      const data = await response.json();
-      setSuggestions(data.suggestions);
-      setHasFetched(true);
-    } catch (err) {
-      console.error("fetch 에러:", err);
-      alert("서버에 연결할 수 없습니다.");
-    } finally {
-      setIsLoading(false);
-    }
+  const handleNextWithScroll = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    onNext();
   };
 
   return (
-    <div style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
-      <h2>나의 지금 고민은?</h2>
-      <textarea
-        rows={5}
-        value={concern}
-        onChange={(e) => setConcern(e.target.value)}
-        placeholder="지금 고민 중인 내용을 적어보세요."
-        style={{ width: "100%", padding: "1rem", fontSize: "1rem" }}
+    <Container>
+      <h2 style={{ fontSize: '1.3rem', fontWeight: 600, marginBottom: '2rem', textAlign: 'center', color: '#2a2a2a' }}>{title}</h2>
+      <ul style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        {questions.map((q, idx) => {
+          const isDisabled = disabledIndices.includes(idx);
+          const allowNone = idx === 0 || idx === 2;
+
+          return (
+            <li key={idx} style={{ borderBottom: '1px solid #eee', paddingBottom: '1rem' }}>
+              <div style={{ marginBottom: '0.5rem', fontWeight: 500, color: isDisabled ? '#999' : '#000' }}>{q}</div>
+              {isDisabled ? (
+                <div style={{ fontStyle: 'italic', color: '#aaa' }}>해당 없음으로 선택된 항목입니다.</div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.4rem' }}>
+                  {allowNone && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.9rem', color: '#888' }}>
+                      <input
+                        type="radio"
+                        name={`q-${idx}`}
+                        value={0}
+                        checked={responses[idx] === 0}
+                        onChange={() => handleChange(idx, 0)}
+                      />
+                      해당 없음
+                    </label>
+                  )}
+                  {[...Array(10)].map((_, i) => {
+                    const score = i + 1;
+                    return (
+                      <label key={score} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.9rem' }}>
+                        <input
+                          type="radio"
+                          name={`q-${idx}`}
+                          value={score}
+                          checked={responses[idx] === score}
+                          onChange={() => handleChange(idx, score)}
+                        />
+                        {score}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <div style={{ marginTop: '3rem', textAlign: 'center' }}>
+        <button
+          onClick={handleNextWithScroll}
+          style={{ backgroundColor: '#000', color: 'white', padding: '0.7rem 2rem', borderRadius: '8px', fontSize: '1rem' }}
+        >
+          다음
+        </button>
+      </div>
+    </Container>
+  );
+}
+
+function calculateResults(importance, commitment) {
+  const validImportance = importance.map(v => v ?? 0);
+  const validCommitment = commitment.map(v => v ?? 0);
+
+  const scored = questions.map((q, i) => ({
+    label: q,
+    importance: validImportance[i],
+    commitment: validCommitment[i],
+    index: i
+  }));
+
+  const feedback1 = scored
+    .filter(item => item.importance >= 9)
+    .sort((a, b) => b.importance - a.importance)
+    .map(item => item.label);
+
+  const feedback2 = scored
+    .filter(item => item.importance >= 9 && item.commitment <= 6)
+    .sort((a, b) => b.importance - a.importance)
+    .map(item => item.label);
+
+  const score = scored.reduce((sum, val) => sum + val.importance * val.commitment, 0) / 12;
+
+  return { feedback1, feedback2, score };
+}
+
+function App() {
+  const [step, setStep] = useState(1);
+  const [importance, setImportance] = useState(Array(12).fill(undefined));
+  const [commitment, setCommitment] = useState(Array(12).fill(undefined));
+  const [results, setResults] = useState(null);
+
+  const handleNext = () => setStep(2);
+  const handleSubmit = () => {
+    const res = calculateResults(
+      importance.map(v => v ?? 0),
+      commitment.map(v => v ?? 0)
+    );
+    setResults(res);
+    setStep(3);
+  };
+
+  const handleReset = () => {
+    setImportance(Array(12).fill(undefined));
+    setCommitment(Array(12).fill(undefined));
+    setResults(null);
+    setStep(1);
+  };
+
+  return (
+    <div style={{ backgroundColor: '#f8f8f8', minHeight: '100vh', padding: '4rem 2rem' }}>
+      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '2.2rem', fontWeight: 'bold', color: '#333' }}>
+          가치 명료화 설문
+        </h1>
+      </div>
+      {step === 1 && (
+        <QuestionSection
+          title="1. 내가 가치롭게 여기는 정도"
+          responses={importance}
+          setResponses={setImportance}
+          onNext={handleNext}
+        />
+      )}
+
+      {step === 2 && (
+        <QuestionSection
+          title="2. 실제로 헌신하고 전념하는 정도"
+          responses={commitment}
+          setResponses={setCommitment}
+          onNext={handleSubmit}
+          disabledIndices={importance.map((v, i) => v === 0 && (i === 0 || i === 2) ? i : null).filter(i => i !== null)}
+        />
+      )}
+
+      {step === 3 && results && (
+        <ResultPage
+          results={results}
+          importance={importance}
+          commitment={commitment}
+          onReset={handleReset}
+          onNext={() => setStep(4)} // ← 이 부분 추가
+        />
+      )}
+      {step === 4 && results && (
+        <Advice results={results}
+        onBack={() => setStep(3)}
+        onNext={() => setStep(5)} 
       />
-
-      <button
-        onClick={handleSubmit}
-        type="button"
-        disabled={isLoading || !concern.trim()}
-        style={{
-          marginTop: "1rem",
-          padding: "0.5rem 1.5rem",
-          fontSize: "1rem",
-          cursor: isLoading ? "not-allowed" : "pointer",
-          backgroundColor: isLoading ? "#ccc" : "#007bff",
-          color: "#fff",
-          border: "none",
-          borderRadius: "4px",
-        }}
-      >
-        {isLoading
-          ? "로딩 중..."
-          : hasFetched
-          ? "다른 행동 추천받기"
-          : "행동 추천 받기"}
-      </button>
-
-      {suggestions && (
-        <div style={{ marginTop: "2rem", whiteSpace: "pre-wrap" }}>
-          <h3>AI 추천 행동:</h3>
-          <p>{suggestions}</p>
-        </div>
+      )}
+    
+      {step === 5 && (
+        <ReminderImage onBack={() => setStep(4)} />
       )}
     </div>
+    
   );
 }
 
